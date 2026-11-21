@@ -11,6 +11,7 @@ import json
 import base64
 import logging
 from typing import Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -167,6 +168,83 @@ def set_api_key(payload: SetKeyRequest):
         "status": "success",
         "provider": provider,
         "message": f"{provider.capitalize()} API key saved successfully."
+    }
+
+
+class ConfigUpdateRequest(BaseModel):
+    active_provider: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+
+
+@app.get("/api/config")
+def get_engine_config():
+    """Returns current active provider and masked keys for the secret configuration UI."""
+    load_env_file()
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+    active_prov = os.environ.get("ACTIVE_PROVIDER", "groq")
+
+    def mask(k: str) -> str:
+        if not k:
+            return ""
+        if len(k) <= 8:
+            return "••••••••"
+        return f"{k[:4]}••••••••{k[-4:]}"
+
+    return {
+        "active_provider": active_prov,
+        "groq_configured": bool(groq_key),
+        "gemini_configured": bool(gemini_key),
+        "groq_masked": mask(groq_key),
+        "gemini_masked": mask(gemini_key),
+        "model": "qwen/qwen3.8-27b" if active_prov == "groq" else "gemini-1.5-flash"
+    }
+
+
+@app.post("/api/config")
+def update_engine_config(payload: ConfigUpdateRequest):
+    """Updates active provider and API keys, persisting to .env file and process environment."""
+    load_env_file()
+    env_path = ENV_FILE_PATH
+
+    updates = {}
+    if payload.active_provider:
+        updates["ACTIVE_PROVIDER"] = payload.active_provider.lower().strip()
+    if payload.groq_api_key and payload.groq_api_key.strip():
+        updates["GROQ_API_KEY"] = payload.groq_api_key.strip()
+    if payload.gemini_api_key and payload.gemini_api_key.strip():
+        updates["GEMINI_API_KEY"] = payload.gemini_api_key.strip()
+
+    lines = []
+    found_vars = set()
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                matched = False
+                for var, val in updates.items():
+                    if line.startswith(f"{var}="):
+                        lines.append(f"{var}={val}\n")
+                        found_vars.add(var)
+                        matched = True
+                        break
+                if not matched:
+                    lines.append(line)
+
+    for var, val in updates.items():
+        if var not in found_vars:
+            lines.append(f"{var}={val}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    for var, val in updates.items():
+        os.environ[var] = val
+
+    return {
+        "status": "success",
+        "active_provider": os.environ.get("ACTIVE_PROVIDER", "groq"),
+        "message": "Engine configuration saved successfully."
     }
 
 

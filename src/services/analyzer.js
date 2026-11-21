@@ -25,14 +25,15 @@ function getApiBaseUrl() {
 function getAuthHeadersAndCredentials() {
   const groqKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('GROQ_API_KEY') || '').trim() : '';
   const geminiKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('GEMINI_API_KEY') || '').trim() : '';
-  const userApiKey = groqKey || geminiKey || undefined;
-  // Only set explicit provider if user explicitly saved an override key;
-  // otherwise let module/.env ACTIVE_PROVIDER (groq) decide.
-  const provider = groqKey ? 'groq' : (geminiKey ? 'gemini' : undefined);
+  const activeProvider = typeof localStorage !== 'undefined' ? (localStorage.getItem('ACTIVE_PROVIDER') || '').trim() : '';
+
+  const provider = activeProvider || (groqKey ? 'groq' : (geminiKey ? 'gemini' : undefined));
+  const userApiKey = provider === 'gemini' ? (geminiKey || undefined) : (groqKey || undefined);
 
   const headers = { 'Content-Type': 'application/json' };
   if (groqKey) headers['x-groq-api-key'] = groqKey;
-  else if (geminiKey) headers['x-gemini-api-key'] = geminiKey;
+  if (geminiKey) headers['x-gemini-api-key'] = geminiKey;
+  if (provider) headers['x-provider'] = provider;
 
   return { headers, userApiKey, provider };
 }
@@ -286,5 +287,27 @@ export async function fetchExternalPortalGuide(productName, category, externalTi
     throw new Error(errData.detail || `External portal lookup failed (HTTP ${res.status})`);
   }
 
+  return await res.json();
+}
+
+/**
+ * Get current active engine configuration (Groq vs Gemini & masked keys)
+ */
+export async function getEngineConfig() {
+  const res = await fetchEcoLens('/config', { method: 'GET' });
+  if (!res.ok) throw new Error('Failed to fetch engine configuration.');
+  return await res.json();
+}
+
+/**
+ * Save & update active engine configuration and keys
+ */
+export async function updateEngineConfig(config) {
+  const res = await fetchEcoLens('/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  });
+  if (!res.ok) throw new Error('Failed to update engine configuration.');
   return await res.json();
 }

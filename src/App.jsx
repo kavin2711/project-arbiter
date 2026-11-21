@@ -4,12 +4,14 @@ import {
   Sparkles, Leaf, X, Check, Edit2, ExternalLink, HeartHandshake, 
   Layers, Star, ShieldCheck, RefreshCw, ZoomIn, MapPin, Phone, 
   Building, Users, Baby, CheckCircle2, Shield, Compass, AlertTriangle, Wrench,
-  Cloud, CloudOff, LogIn, LogOut, Loader2
+  Cloud, CloudOff, LogIn, LogOut, Loader2, Key, Eye, EyeOff, RotateCcw
 } from 'lucide-react';
 import { 
   analyzeProductImage, 
   fetchDonationDestinations, 
-  fetchExternalPortalGuide 
+  fetchExternalPortalGuide,
+  getEngineConfig,
+  updateEngineConfig
 } from './services/analyzer';
 import {
   signInWithGoogle,
@@ -846,6 +848,264 @@ function ExternalPortalModal({
   );
 }
 
+/* 6. Secret Engine Configuration Modal (API Key Failover Insurance) */
+function EngineConfigModal({
+  isOpen,
+  onClose,
+  engineConfig,
+  selectedProvider,
+  setSelectedProvider,
+  inputGroqKey,
+  setInputGroqKey,
+  inputGeminiKey,
+  setInputGeminiKey,
+  showGroqKey,
+  setShowGroqKey,
+  showGeminiKey,
+  setShowGeminiKey,
+  onSave,
+  onReset,
+  isSaving,
+  successMsg,
+  errorMsg
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fadeIn">
+      <div
+        className="relative w-full max-w-2xl max-h-[90vh] rounded-3xl overflow-hidden border shadow-2xl flex flex-col"
+        style={{
+          backgroundColor: '#E5E8CE',
+          borderColor: '#789575'
+        }}
+      >
+        {/* Header */}
+        <div
+          className="px-6 py-4 border-b flex items-center justify-between"
+          style={{ borderColor: 'rgba(120, 149, 117, 0.25)', backgroundColor: 'rgba(255, 255, 255, 0.6)' }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-md flex-shrink-0"
+              style={{ backgroundColor: '#D97746' }}
+            >
+              <Key className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-['Orbitron'] font-bold text-base sm:text-lg tracking-wider" style={{ color: '#2b3b29' }}>
+                  Engine Configuration
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-terracotta/15 text-terracotta font-bold">
+                  Failover Insurance
+                </span>
+              </div>
+              <p className="text-xs font-medium opacity-75 mt-0.5" style={{ color: '#4a6048' }}>
+                Switch active AI models, update API keys, and configure emergency failover.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-sage/15 text-sage transition-all active:scale-90 cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto space-y-5 text-left scrollbar-thin">
+          
+          {/* Success / Error Banners */}
+          {successMsg && (
+            <div className="p-3 rounded-2xl border flex items-center gap-2 text-xs bg-emerald-500/10 border-emerald-500/40 text-emerald-900 font-semibold">
+              <Check className="w-4 h-4 text-emerald-700" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+          {errorMsg && (
+            <div className="p-3 rounded-2xl border flex items-center gap-2 text-xs bg-red-500/10 border-red-500/40 text-red-900 font-semibold">
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Section 1: Choose Active Provider */}
+          <div>
+            <label className="text-[11px] font-mono uppercase tracking-wider font-bold block mb-2" style={{ color: '#789575' }}>
+              Select Active AI Inference Engine
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Option A: Groq LPU */}
+              <div
+                onClick={() => setSelectedProvider('groq')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                  selectedProvider === 'groq'
+                    ? 'bg-white border-terracotta shadow-md scale-[1.01]'
+                    : 'bg-white/60 border-sage/30 hover:bg-white/80'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-['Orbitron'] font-bold text-xs uppercase tracking-wide" style={{ color: '#2b3b29' }}>
+                    Groq LPU Vision
+                  </span>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                    selectedProvider === 'groq' ? 'bg-terracotta text-white' : 'bg-sage/15 text-sage'
+                  }`}>
+                    {selectedProvider === 'groq' ? 'Active Engine' : 'Primary'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono opacity-80" style={{ color: '#4a6048' }}>
+                  Model: <strong className="text-sage font-semibold">qwen/qwen3.8-27b</strong>
+                </div>
+                <p className="text-[10px] leading-tight mt-1 opacity-70" style={{ color: '#4a6048' }}>
+                  High-throughput LPU chip architecture. Near-instant inference, highly resistant to 429 quota exhaustion.
+                </p>
+              </div>
+
+              {/* Option B: Google Gemini */}
+              <div
+                onClick={() => setSelectedProvider('gemini')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                  selectedProvider === 'gemini'
+                    ? 'bg-white border-terracotta shadow-md scale-[1.01]'
+                    : 'bg-white/60 border-sage/30 hover:bg-white/80'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-['Orbitron'] font-bold text-xs uppercase tracking-wide" style={{ color: '#2b3b29' }}>
+                    Google Gemini
+                  </span>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                    selectedProvider === 'gemini' ? 'bg-terracotta text-white' : 'bg-sage/15 text-sage'
+                  }`}>
+                    {selectedProvider === 'gemini' ? 'Active Engine' : 'Failover Insurance'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono opacity-80" style={{ color: '#4a6048' }}>
+                  Model: <strong className="text-sage font-semibold">gemini-1.5-flash</strong>
+                </div>
+                <p className="text-[10px] leading-tight mt-1 opacity-70" style={{ color: '#4a6048' }}>
+                  Google multimodal foundation model. Seamless secondary insurance when switching API providers.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Key Management Inputs */}
+          <div className="space-y-4 pt-1">
+            {/* Groq Key Input */}
+            <div className="p-3.5 rounded-2xl border bg-white/70" style={{ borderColor: 'rgba(120, 149, 117, 0.3)' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-mono uppercase tracking-wider font-bold" style={{ color: '#2b3b29' }}>
+                  Groq API Key
+                </label>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-sage/10 text-sage font-bold">
+                  {engineConfig.groq_masked ? `Current: ${engineConfig.groq_masked}` : 'Not Configured'}
+                </span>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  type={showGroqKey ? 'text' : 'password'}
+                  value={inputGroqKey}
+                  onChange={(e) => setInputGroqKey(e.target.value)}
+                  placeholder={engineConfig.groq_masked ? "Enter new key to override (starts with gsk_)" : "gsk_..."}
+                  className="w-full pr-10 pl-3.5 py-2 rounded-xl text-xs font-mono bg-white border outline-none focus:border-terracotta"
+                  style={{ borderColor: 'rgba(120, 149, 117, 0.35)', color: '#2b3b29' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGroqKey(!showGroqKey)}
+                  className="absolute right-2.5 p-1 text-sage hover:text-terracotta transition-colors cursor-pointer"
+                >
+                  {showGroqKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Gemini Key Input */}
+            <div className="p-3.5 rounded-2xl border bg-white/70" style={{ borderColor: 'rgba(120, 149, 117, 0.3)' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-mono uppercase tracking-wider font-bold" style={{ color: '#2b3b29' }}>
+                  Gemini API Key
+                </label>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-sage/10 text-sage font-bold">
+                  {engineConfig.gemini_masked ? `Current: ${engineConfig.gemini_masked}` : 'Not Configured'}
+                </span>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  type={showGeminiKey ? 'text' : 'password'}
+                  value={inputGeminiKey}
+                  onChange={(e) => setInputGeminiKey(e.target.value)}
+                  placeholder={engineConfig.gemini_masked ? "Enter new key to override (starts with AIza)" : "AIzaSy..."}
+                  className="w-full pr-10 pl-3.5 py-2 rounded-xl text-xs font-mono bg-white border outline-none focus:border-terracotta"
+                  style={{ borderColor: 'rgba(120, 149, 117, 0.35)', color: '#2b3b29' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="absolute right-2.5 p-1 text-sage hover:text-terracotta transition-colors cursor-pointer"
+                >
+                  {showGeminiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Modal Footer Controls */}
+        <div 
+          className="px-6 py-3.5 border-t flex items-center justify-between gap-3"
+          style={{ borderColor: 'rgba(120, 149, 117, 0.25)', backgroundColor: 'rgba(255, 255, 255, 0.6)' }}
+        >
+          <button
+            onClick={onReset}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold uppercase tracking-wider border hover:bg-sage/10 transition-all cursor-pointer"
+            style={{ borderColor: '#789575', color: '#789575' }}
+            title="Clear manual overrides and reset to original .env defaults"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Defaults</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wider border hover:bg-sage/10 transition-all cursor-pointer"
+              style={{ borderColor: '#789575', color: '#789575' }}
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={onSave}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: '#D97746' }}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save & Apply</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState('landing');
   const [activeSlide, setActiveSlide] = useState(0);
@@ -887,6 +1147,24 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const [cloudMessage, setCloudMessage] = useState('');
+
+  // Secret Engine Configuration Modal States (API Failover Insurance)
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [engineConfig, setEngineConfig] = useState({
+    active_provider: 'groq',
+    groq_masked: '',
+    gemini_masked: '',
+    groq_configured: false,
+    gemini_configured: false
+  });
+  const [inputGroqKey, setInputGroqKey] = useState('');
+  const [inputGeminiKey, setInputGeminiKey] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState('groq');
+  const [showGroqKey, setShowGroqKey] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSuccessMsg, setConfigSuccessMsg] = useState('');
+  const [configErrorMsg, setConfigErrorMsg] = useState('');
 
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -1024,6 +1302,76 @@ export default function App() {
 
   const handleSignOut = async () => {
     await logOut();
+  };
+
+  // Secret Engine Configuration Handlers (API Failover Insurance)
+  const openConfigModal = async () => {
+    setShowConfigModal(true);
+    setConfigSuccessMsg('');
+    setConfigErrorMsg('');
+    try {
+      const cfg = await getEngineConfig();
+      setEngineConfig(cfg);
+      const active = localStorage.getItem('ACTIVE_PROVIDER') || cfg.active_provider || 'groq';
+      setSelectedProvider(active);
+      setInputGroqKey(localStorage.getItem('GROQ_API_KEY') || '');
+      setInputGeminiKey(localStorage.getItem('GEMINI_API_KEY') || '');
+    } catch (e) {
+      console.warn("Could not load engine config from server, using local fallbacks:", e);
+      const active = localStorage.getItem('ACTIVE_PROVIDER') || 'groq';
+      setSelectedProvider(active);
+      setInputGroqKey(localStorage.getItem('GROQ_API_KEY') || '');
+      setInputGeminiKey(localStorage.getItem('GEMINI_API_KEY') || '');
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setConfigSaving(true);
+    setConfigSuccessMsg('');
+    setConfigErrorMsg('');
+    try {
+      const payload = {
+        active_provider: selectedProvider
+      };
+      if (inputGroqKey.trim()) payload.groq_api_key = inputGroqKey.trim();
+      if (inputGeminiKey.trim()) payload.gemini_api_key = inputGeminiKey.trim();
+
+      await updateEngineConfig(payload);
+
+      localStorage.setItem('ACTIVE_PROVIDER', selectedProvider);
+      if (inputGroqKey.trim()) localStorage.setItem('GROQ_API_KEY', inputGroqKey.trim());
+      if (inputGeminiKey.trim()) localStorage.setItem('GEMINI_API_KEY', inputGeminiKey.trim());
+
+      setConfigSuccessMsg(`Engine updated! Active provider: ${selectedProvider.toUpperCase()}`);
+      const updated = await getEngineConfig();
+      setEngineConfig(updated);
+      setTimeout(() => setConfigSuccessMsg(''), 3000);
+    } catch (err) {
+      console.error("Config save error:", err);
+      localStorage.setItem('ACTIVE_PROVIDER', selectedProvider);
+      if (inputGroqKey.trim()) localStorage.setItem('GROQ_API_KEY', inputGroqKey.trim());
+      if (inputGeminiKey.trim()) localStorage.setItem('GEMINI_API_KEY', inputGeminiKey.trim());
+      setConfigSuccessMsg(`Client settings saved! Active provider: ${selectedProvider.toUpperCase()}`);
+      setTimeout(() => setConfigSuccessMsg(''), 3000);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const handleResetConfig = async () => {
+    localStorage.removeItem('ACTIVE_PROVIDER');
+    localStorage.removeItem('GROQ_API_KEY');
+    localStorage.removeItem('GEMINI_API_KEY');
+    setInputGroqKey('');
+    setInputGeminiKey('');
+    setSelectedProvider('groq');
+    try {
+      await updateEngineConfig({ active_provider: 'groq' });
+      const updated = await getEngineConfig();
+      setEngineConfig(updated);
+    } catch (e) {}
+    setConfigSuccessMsg('Reset to system defaults (Groq LPU active).');
+    setTimeout(() => setConfigSuccessMsg(''), 2500);
   };
 
   const handleFileChange = (e) => {
@@ -1245,13 +1593,21 @@ export default function App() {
         }}
       >
         <div 
-          className="flex items-center gap-3 cursor-pointer"
-          onClick={() => { setCurrentPage('landing'); scrollToSlide(0); }}
+          className="flex items-center gap-3 cursor-pointer group select-none"
+          onClick={() => {
+            if (currentPage === 'main') {
+              openConfigModal();
+            } else {
+              setCurrentPage('landing');
+              scrollToSlide(0);
+            }
+          }}
+          title={currentPage === 'main' ? "System Configuration & Engine Redundancy" : "True Cycle"}
         >
           <img 
             src="/assets/logo-sage.png" 
             alt="True Cycle Logo" 
-            className="w-9 h-9 object-contain drop-shadow-sm"
+            className="w-9 h-9 object-contain drop-shadow-sm group-hover:scale-105 transition-transform"
           />
           <span 
             className="font-['Orbitron'] font-extrabold text-xl md:text-2xl tracking-[0.2em]"
@@ -2280,6 +2636,28 @@ export default function App() {
         analysisData={analysisData}
         externalData={externalData}
         isLoading={isFetchingExternal}
+      />
+
+      {/* SECRET ENGINE CONFIGURATION & API FAILOVER MODAL */}
+      <EngineConfigModal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        engineConfig={engineConfig}
+        selectedProvider={selectedProvider}
+        setSelectedProvider={setSelectedProvider}
+        inputGroqKey={inputGroqKey}
+        setInputGroqKey={setInputGroqKey}
+        inputGeminiKey={inputGeminiKey}
+        setInputGeminiKey={setInputGeminiKey}
+        showGroqKey={showGroqKey}
+        setShowGroqKey={setShowGroqKey}
+        showGeminiKey={showGeminiKey}
+        setShowGeminiKey={setShowGeminiKey}
+        onSave={handleSaveConfig}
+        onReset={handleResetConfig}
+        isSaving={configSaving}
+        successMsg={configSuccessMsg}
+        errorMsg={configErrorMsg}
       />
 
     </div>
