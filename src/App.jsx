@@ -3,13 +3,23 @@ import {
   ChevronDown, ChevronUp, ArrowRight, Camera, FolderOpen, 
   Sparkles, Leaf, X, Check, Edit2, ExternalLink, HeartHandshake, 
   Layers, Star, ShieldCheck, RefreshCw, ZoomIn, MapPin, Phone, 
-  Building, Users, Baby, CheckCircle2, Shield, Compass, AlertTriangle, Wrench
+  Building, Users, Baby, CheckCircle2, Shield, Compass, AlertTriangle, Wrench,
+  Cloud, CloudOff, LogIn, LogOut, Loader2
 } from 'lucide-react';
 import { 
   analyzeProductImage, 
   fetchDonationDestinations, 
   fetchExternalPortalGuide 
 } from './services/analyzer';
+import {
+  signInWithGoogle,
+  logOut,
+  subscribeToAuth,
+  saveSpecimenToCloud,
+  loadUserSpecimensFromCloud,
+  deleteSpecimenFromCloud,
+  updateSpecimenNameInCloud
+} from './services/firebase';
 
 /* 1. Cinematic Morphing Year Component */
 function MorphingYear({ targetYear, isActive, onComplete }) {
@@ -872,6 +882,12 @@ export default function App() {
   const [capturedSnapshot, setCapturedSnapshot] = useState(null);
   const [photoNameInput, setPhotoNameInput] = useState('');
 
+  // Firebase Authentication & Cloud Sync States
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
+  const [cloudMessage, setCloudMessage] = useState('');
+
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -954,6 +970,62 @@ export default function App() {
     }
   };
 
+  // Firebase Auth Listener & Auto-sync Cloud Specimens
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth(async (user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+      if (user) {
+        setCloudSyncStatus('syncing');
+        setCloudMessage('Syncing specimens...');
+        try {
+          const cloudItems = await loadUserSpecimensFromCloud(user.uid);
+          if (cloudItems && cloudItems.length > 0) {
+            setStationImages((prev) => {
+              const existingIds = new Set(prev.map((p) => String(p.id)));
+              const newItems = cloudItems.filter((c) => !existingIds.has(String(c.id)));
+              return [...newItems, ...prev];
+            });
+            // Automatically select the latest cloud specimen if none currently active
+            setSelectedSpecimen((current) => {
+              if (!current && cloudItems[0]) {
+                if (cloudItems[0].analysisData) {
+                  setAnalysisData(cloudItems[0].analysisData);
+                }
+                return cloudItems[0];
+              }
+              return current;
+            });
+          }
+          setCloudSyncStatus('synced');
+          setCloudMessage('Cloud Synced');
+        } catch (err) {
+          console.error('[Firebase] Failed to load cloud specimens:', err);
+          setCloudSyncStatus('error');
+          setCloudMessage('Sync failed');
+        }
+      } else {
+        setCloudSyncStatus('idle');
+        setCloudMessage('');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setIsAuthLoading(true);
+    const { user, error } = await signInWithGoogle();
+    setIsAuthLoading(false);
+    if (error) {
+      console.warn('Google Sign-In notice:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await logOut();
+  };
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -966,6 +1038,10 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setStationImages(prev => [...prev, newImage]);
+      // Auto-save initial item to cloud if logged in
+      if (currentUser) {
+        saveSpecimenToCloud(currentUser.uid, newImage, null);
+      }
       // Automatically select if first item
       if (!selectedSpecimen) {
         handleSelectSpecimen(newImage);
@@ -981,19 +1057,35 @@ export default function App() {
   // Select a specimen from the Input Station and trigger forensic analysis
   const handleSelectSpecimen = async (specimen) => {
     setSelectedSpecimen(specimen);
-    setIsAnalyzing(true);
-    setAnalysisData(null);
     setAnalysisError(null);
     setDonationData(null);
     setExternalData(null);
     setIsFetchingDonations(false);
     setIsFetchingExternal(false);
 
+    // If specimen already has pre-cached analysisData from cloud, use it immediately!
+    if (specimen.analysisData) {
+      setAnalysisData(specimen.analysisData);
+      setIsAnalyzing(false);
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisData(null);
+
     try {
       // 1. PRIMARY API CALL: Main page values ONLY via EcoLens Module
       const result = await analyzeProductImage(specimen.url, specimen.name);
       setAnalysisData(result);
       setIsAnalyzing(false);
+
+      // Auto-save specimen with analysis to Cloud Firestore if logged in
+      if (currentUser) {
+        setCloudSyncStatus('syncing');
+        saveSpecimenToCloud(currentUser.uid, specimen, result)
+          .then(() => setCloudSyncStatus('synced'))
+          .catch(() => setCloudSyncStatus('error'));
+      }
 
       // 2. SECONDARY BACKGROUND PROCESSING: Runs asynchronously ONLY when flagged true
       if (result.donate) {
@@ -1072,6 +1164,9 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setStationImages(prev => [...prev, newImage]);
+    if (currentUser) {
+      saveSpecimenToCloud(currentUser.uid, newImage, null);
+    }
     handleSelectSpecimen(newImage);
     stopCamera();
     setShowOptions(false);
@@ -1086,15 +1181,22 @@ export default function App() {
 
   const saveRename = (id) => {
     if (!renameInput.trim()) return;
-    setStationImages(prev => prev.map(img => img.id === id ? { ...img, name: renameInput.trim() } : img));
+    const trimmed = renameInput.trim();
+    setStationImages(prev => prev.map(img => img.id === id ? { ...img, name: trimmed } : img));
     if (selectedSpecimen?.id === id) {
-      setSelectedSpecimen(prev => ({ ...prev, name: renameInput.trim() }));
+      setSelectedSpecimen(prev => ({ ...prev, name: trimmed }));
+    }
+    if (currentUser) {
+      updateSpecimenNameInCloud(currentUser.uid, id, trimmed);
     }
     setRenamingId(null);
     setRenameInput('');
   };
 
   const deleteImage = (id) => {
+    if (currentUser) {
+      deleteSpecimenFromCloud(currentUser.uid, id);
+    }
     setStationImages(prev => {
       const filtered = prev.filter(img => img.id !== id);
       if (selectedSpecimen?.id === id) {
@@ -1159,23 +1261,102 @@ export default function App() {
           </span>
         </div>
 
-        {currentPage === 'landing' ? (
-          <button
-            onClick={() => setCurrentPage('main')}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase border transition-all hover:bg-sage/10 cursor-pointer"
-            style={{ borderColor: '#789575', color: '#789575' }}
-          >
-            Enter App
-          </button>
-        ) : (
-          <button
-            onClick={() => setCurrentPage('landing')}
-            className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase border transition-all hover:bg-sage/10 cursor-pointer"
-            style={{ borderColor: '#789575', color: '#789575' }}
-          >
-            Storyline
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* GOOGLE CLOUD SYNC & LOGIN BUTTON */}
+          {isAuthLoading ? (
+            <div className="h-8 px-3 rounded-full bg-sage/10 animate-pulse flex items-center justify-center text-[10px] font-mono text-sage">
+              Connecting...
+            </div>
+          ) : currentUser ? (
+            <div 
+              className="flex items-center gap-2 px-3 py-1 rounded-full border shadow-xs transition-all backdrop-blur-sm"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                borderColor: 'rgba(120, 149, 117, 0.4)'
+              }}
+            >
+              {currentUser.photoURL ? (
+                <img 
+                  src={currentUser.photoURL} 
+                  alt={currentUser.displayName || "User"} 
+                  className="w-6 h-6 rounded-full object-cover border border-sage/40"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-sage text-white flex items-center justify-center text-[10px] font-bold">
+                  {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
+                </div>
+              )}
+
+              <div className="hidden sm:flex flex-col text-left leading-tight">
+                <span className="text-[11px] font-semibold truncate max-w-[120px]" style={{ color: '#2b3b29' }}>
+                  {currentUser.displayName || currentUser.email?.split('@')[0]}
+                </span>
+                <span className="text-[9px] font-mono flex items-center gap-1 font-medium" style={{ color: '#789575' }}>
+                  {cloudSyncStatus === 'syncing' ? (
+                    <>
+                      <Loader2 className="w-2.5 h-2.5 animate-spin text-terracotta" />
+                      Syncing...
+                    </>
+                  ) : cloudSyncStatus === 'error' ? (
+                    <span className="text-terracotta">Sync error</span>
+                  ) : (
+                    <>
+                      <Cloud className="w-2.5 h-2.5 text-sage" />
+                      Cloud Active
+                    </>
+                  )}
+                </span>
+              </div>
+
+              <button
+                onClick={handleSignOut}
+                title="Sign out of Google"
+                className="p-1 rounded-full hover:bg-sage/15 text-sage transition-all active:scale-90 ml-1 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5 text-terracotta" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleGoogleSignIn}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wider transition-all border hover:bg-white/90 active:scale-95 cursor-pointer shadow-xs"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                borderColor: 'rgba(120, 149, 117, 0.4)',
+                color: '#2b3b29'
+              }}
+              title="Sign in with Google to auto-sync your scans to cloud"
+            >
+              <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Login</span>
+            </button>
+          )}
+
+          {/* VIEW SWITCHER: Enter App / Storyline */}
+          {currentPage === 'landing' ? (
+            <button
+              onClick={() => setCurrentPage('main')}
+              className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase border transition-all hover:bg-sage/10 cursor-pointer"
+              style={{ borderColor: '#789575', color: '#789575' }}
+            >
+              Enter App
+            </button>
+          ) : (
+            <button
+              onClick={() => setCurrentPage('landing')}
+              className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase border transition-all hover:bg-sage/10 cursor-pointer"
+              style={{ borderColor: '#789575', color: '#789575' }}
+            >
+              Storyline
+            </button>
+          )}
+        </div>
       </header>
 
       {/* VIEW 1: STORYLINE SLIDES */}
@@ -1652,21 +1833,10 @@ export default function App() {
                       }}
                     >
                       <div className="space-y-1.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-terracotta">
+                        <div className="mb-1">
+                          <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-terracotta block truncate">
                             {analysisData.category || "Forensic Identification"}
                           </span>
-                          <div className="flex items-center gap-1.5">
-                            {analysisData.isGrounded && (
-                              <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-terracotta/15 text-terracotta font-bold flex items-center gap-1">
-                                <Compass className="w-2.5 h-2.5 text-terracotta" />
-                                Forensic Grounded
-                              </span>
-                            )}
-                            <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-sage/10 text-sage font-bold">
-                              {analysisData.activeModel || 'Custom AI'}
-                            </span>
-                          </div>
                         </div>
 
                         <h3 
@@ -1701,45 +1871,6 @@ export default function App() {
                           </div>
                         )}
                       </div>
-
-                      {/* Material Intelligence Sources & Citations */}
-                      {analysisData.groundingSources && analysisData.groundingSources.length > 0 && (
-                        <div className="pt-2 mt-1 border-t border-sage/20">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-terracotta flex items-center gap-1">
-                              <Compass className="w-3 h-3 text-terracotta" />
-                              Material Sources ({analysisData.groundingSources.length})
-                            </span>
-                            {analysisData.groundingQueries && analysisData.groundingQueries.length > 0 && (
-                              <span className="text-[9px] font-mono opacity-60 truncate max-w-[180px]" title={analysisData.groundingQueries.join(' • ')}>
-                                Q: {analysisData.groundingQueries[0]}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5">
-                            {analysisData.groundingSources.slice(0, 3).map((source, sIdx) => (
-                              <a
-                                key={sIdx}
-                                href={source.uri}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono border hover:bg-white hover:border-terracotta transition-all text-[#2b3b29] group cursor-pointer shadow-xs"
-                                style={{ 
-                                  backgroundColor: 'rgba(255, 255, 255, 0.85)',
-                                  borderColor: 'rgba(120, 149, 117, 0.3)' 
-                                }}
-                                title={source.uri}
-                              >
-                                <span className="truncate max-w-[160px] sm:max-w-[200px] font-semibold group-hover:text-terracotta transition-colors">
-                                  {source.title}
-                                </span>
-                                <ExternalLink className="w-2.5 h-2.5 text-terracotta flex-shrink-0 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     {/* Top Right Box: Uploaded Image in Exact Natural Aspect Ratio */}
