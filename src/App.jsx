@@ -18,9 +18,11 @@ import {
   logOut,
   subscribeToAuth,
   saveSpecimenToCloud,
+  saveSpecimenAnalysisToCloud,
   loadUserSpecimensFromCloud,
   deleteSpecimenFromCloud,
-  updateSpecimenNameInCloud
+  updateSpecimenNameInCloud,
+  createCompressedThumbnail
 } from './services/firebase';
 
 /* 1. Cinematic Morphing Year Component */
@@ -1115,16 +1117,96 @@ export default function App() {
   const [fluidFlowing, setFluidFlowing] = useState(false);
   const [buttonsVisible, setButtonsVisible] = useState(false);
   
-  // Input Station Images State
-  const [stationImages, setStationImages] = useState([]);
+  // Persistent Analysis Data Cache (In-Memory & LocalStorage for Instant Access)
+  const analysisCacheRef = useRef(new Map());
+
+  const getCachedAnalysis = (specimenId) => {
+    if (!specimenId) return null;
+    const idStr = String(specimenId);
+    if (analysisCacheRef.current.has(idStr)) {
+      return analysisCacheRef.current.get(idStr);
+    }
+    try {
+      const stored = localStorage.getItem(`tc_analysis_${idStr}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.composition || parsed.productName)) {
+          analysisCacheRef.current.set(idStr, parsed);
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  const setCachedAnalysis = (specimenId, data) => {
+    if (!specimenId || !data) return;
+    const idStr = String(specimenId);
+    analysisCacheRef.current.set(idStr, data);
+    try {
+      localStorage.setItem(`tc_analysis_${idStr}`, JSON.stringify(data));
+    } catch (e) {}
+  };
+
+  // Input Station Images State (with Instant Local Persistence)
+  const [stationImages, setStationImages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tc_station_images');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   const [renamingId, setRenamingId] = useState(null);
   const [renameInput, setRenameInput] = useState('');
 
-  // Active Selected Specimen & Forensic Analysis State
-  const [selectedSpecimen, setSelectedSpecimen] = useState(null);
-  const [analysisData, setAnalysisData] = useState(null);
+  // Active Selected Specimen & Forensic Analysis State (with Instant Hydration)
+  const [selectedSpecimen, setSelectedSpecimen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tc_station_images');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed[0];
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const [analysisData, setAnalysisData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tc_station_images');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const first = parsed[0];
+          if (first.analysisData) return first.analysisData;
+          const stored = localStorage.getItem(`tc_analysis_${first.id}`);
+          if (stored) return JSON.parse(stored);
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
+
+  // Sync stationImages to localStorage whenever updated
+  useEffect(() => {
+    if (stationImages.length > 0) {
+      try {
+        const trimmed = stationImages.slice(0, 25);
+        localStorage.setItem('tc_station_images', JSON.stringify(trimmed));
+      } catch (e) {
+        console.warn('LocalStorage save warning:', e);
+      }
+    }
+  }, [stationImages]);
 
   // Secondary Background Pipeline States (Donations & External Portals)
   const [donationData, setDonationData] = useState(null);
@@ -1259,18 +1341,49 @@ export default function App() {
         try {
           const cloudItems = await loadUserSpecimensFromCloud(user.uid);
           if (cloudItems && cloudItems.length > 0) {
-            setStationImages((prev) => {
-              const existingIds = new Set(prev.map((p) => String(p.id)));
-              const newItems = cloudItems.filter((c) => !existingIds.has(String(c.id)));
-              return [...newItems, ...prev];
+            // Index every cloud item's analysis into cache
+            cloudItems.forEach((ci) => {
+              if (ci.analysisData) {
+                setCachedAnalysis(ci.id, ci.analysisData);
+              }
             });
-            // Automatically select the latest cloud specimen if none currently active
+
+            // Merge cloud items with local state (ensuring analysisData is retained)
+            setStationImages((prev) => {
+              const prevMap = new Map(prev.map((p) => [String(p.id), p]));
+              const merged = cloudItems.map((ci) => {
+                const local = prevMap.get(String(ci.id));
+                prevMap.delete(String(ci.id));
+                const resolvedAnalysis = ci.analysisData || local?.analysisData || getCachedAnalysis(ci.id);
+                return {
+                  ...ci,
+                  url: local?.url || ci.url,
+                  analysisData: resolvedAnalysis,
+                  hasCloudDoc: true
+                };
+              });
+              const remainingLocal = Array.from(prevMap.values()).map(item => ({
+                ...item,
+                analysisData: item.analysisData || getCachedAnalysis(item.id)
+              }));
+              return [...merged, ...remainingLocal];
+            });
+
+            // Automatically select active specimen with immediate cached analysis
             setSelectedSpecimen((current) => {
-              if (!current && cloudItems[0]) {
-                if (cloudItems[0].analysisData) {
-                  setAnalysisData(cloudItems[0].analysisData);
+              const active = current 
+                ? { ...current, analysisData: current.analysisData || getCachedAnalysis(current.id) }
+                : cloudItems[0];
+              
+              if (active) {
+                const cached = active.analysisData || getCachedAnalysis(active.id);
+                if (cached) {
+                  setAnalysisData(cached);
+                  setDonationData(cached.donationData || null);
+                  setExternalData(cached.externalData || null);
+                  setIsAnalyzing(false);
                 }
-                return cloudItems[0];
+                return { ...active, analysisData: cached || active.analysisData };
               }
               return current;
             });
@@ -1378,69 +1491,109 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       const cleanName = file.name.replace(/\.[^/.]+$/, "");
-      const url = URL.createObjectURL(file);
-      const newImage = {
-        id: Date.now() + Math.random(),
-        url,
-        name: cleanName || file.name,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setStationImages(prev => [...prev, newImage]);
-      // Auto-save initial item to cloud if logged in
-      if (currentUser) {
-        saveSpecimenToCloud(currentUser.uid, newImage, null);
-      }
-      // Automatically select if first item
-      if (!selectedSpecimen) {
+      const reader = new FileReader();
+      reader.onload = async (uploadEvent) => {
+        const rawDataUrl = uploadEvent.target?.result;
+        const compressedUrl = await createCompressedThumbnail(rawDataUrl);
+        const newImage = {
+          id: Date.now() + Math.random(),
+          url: compressedUrl || rawDataUrl,
+          name: cleanName || file.name,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setStationImages(prev => [newImage, ...prev]);
+        // Auto-save initial item to cloud if logged in
+        if (currentUser) {
+          saveSpecimenToCloud(currentUser.uid, newImage, null);
+        }
         handleSelectSpecimen(newImage);
-      }
-      setShowOptions(false);
-      setButtonsVisible(false);
-      setIsCameraActive(false);
-      stopCamera();
+        setShowOptions(false);
+        setButtonsVisible(false);
+        setIsCameraActive(false);
+        stopCamera();
+      };
+      reader.readAsDataURL(file);
       e.target.value = '';
     }
   };
 
   // Select a specimen from the Input Station and trigger forensic analysis
-  const handleSelectSpecimen = async (specimen) => {
+  const handleSelectSpecimen = async (specimen, forceRefresh = false) => {
+    if (!specimen) return;
     setSelectedSpecimen(specimen);
     setAnalysisError(null);
+
+    // 1. FAST PATH: Instant access from memory cache, specimen object, or localStorage
+    const cachedData = !forceRefresh ? (specimen.analysisData || getCachedAnalysis(specimen.id)) : null;
+
+    if (cachedData) {
+      setAnalysisData(cachedData);
+      setDonationData(cachedData.donationData || null);
+      setExternalData(cachedData.externalData || null);
+      setIsAnalyzing(false);
+      setIsFetchingDonations(false);
+      setIsFetchingExternal(false);
+
+      // Keep specimen in stationImages synchronized with cached data
+      if (!specimen.analysisData) {
+        setStationImages(prev => prev.map(img => 
+          String(img.id) === String(specimen.id) ? { ...img, analysisData: cachedData } : img
+        ));
+      }
+      return;
+    }
+
+    // 2. SLOW PATH: Run full EcoLens AI forensic analysis
+    setIsAnalyzing(true);
+    setAnalysisData(null);
     setDonationData(null);
     setExternalData(null);
     setIsFetchingDonations(false);
     setIsFetchingExternal(false);
 
-    // If specimen already has pre-cached analysisData from cloud, use it immediately!
-    if (specimen.analysisData) {
-      setAnalysisData(specimen.analysisData);
-      setIsAnalyzing(false);
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setAnalysisData(null);
-
     try {
-      // 1. PRIMARY API CALL: Main page values ONLY via EcoLens Module
+      // PRIMARY API CALL: Main page values ONLY via EcoLens Module
       const result = await analyzeProductImage(specimen.url, specimen.name);
+
+      // Cache immediately in-memory and in localStorage
+      setCachedAnalysis(specimen.id, result);
       setAnalysisData(result);
       setIsAnalyzing(false);
+
+      // Update stationImages & selectedSpecimen so clicking any item is 0ms
+      setStationImages(prev => prev.map(img => 
+        String(img.id) === String(specimen.id) ? { ...img, analysisData: result } : img
+      ));
+      setSelectedSpecimen(prev => 
+        prev && String(prev.id) === String(specimen.id) ? { ...prev, analysisData: result } : prev
+      );
 
       // Auto-save specimen with analysis to Cloud Firestore if logged in
       if (currentUser) {
         setCloudSyncStatus('syncing');
         saveSpecimenToCloud(currentUser.uid, specimen, result)
           .then(() => setCloudSyncStatus('synced'))
-          .catch(() => setCloudSyncStatus('error'));
+          .catch((err) => {
+            console.error('Cloud save failed:', err);
+            setCloudSyncStatus('error');
+          });
       }
 
-      // 2. SECONDARY BACKGROUND PROCESSING: Runs asynchronously ONLY when flagged true
+      // SECONDARY BACKGROUND PROCESSING: Runs asynchronously ONLY when flagged true
       if (result.donate) {
         setIsFetchingDonations(true);
         fetchDonationDestinations(result.productName, result.category, result.donateReason)
           .then(data => {
             setDonationData(data);
+            const currentCached = getCachedAnalysis(specimen.id) || result;
+            const enriched = { ...currentCached, donationData: data };
+            setCachedAnalysis(specimen.id, enriched);
+            setStationImages(prev => prev.map(img => 
+              String(img.id) === String(specimen.id) ? { ...img, analysisData: enriched } : img
+            ));
+            if (currentUser) {
+              saveSpecimenAnalysisToCloud(currentUser.uid, specimen.id, enriched);
+            }
           })
           .catch(err => console.error('Donation background fetch error:', err))
           .finally(() => setIsFetchingDonations(false));
@@ -1451,6 +1604,15 @@ export default function App() {
         fetchExternalPortalGuide(result.productName, result.category, result.externalTitle)
           .then(data => {
             setExternalData(data);
+            const currentCached = getCachedAnalysis(specimen.id) || result;
+            const enriched = { ...currentCached, externalData: data };
+            setCachedAnalysis(specimen.id, enriched);
+            setStationImages(prev => prev.map(img => 
+              String(img.id) === String(specimen.id) ? { ...img, analysisData: enriched } : img
+            ));
+            if (currentUser) {
+              saveSpecimenAnalysisToCloud(currentUser.uid, specimen.id, enriched);
+            }
           })
           .catch(err => console.error('External portal background fetch error:', err))
           .finally(() => setIsFetchingExternal(false));
@@ -1503,15 +1665,16 @@ export default function App() {
     setCapturedSnapshot(dataUrl);
   };
 
-  const confirmPhoto = () => {
+  const confirmPhoto = async () => {
     if (!capturedSnapshot) return;
+    const compressed = await createCompressedThumbnail(capturedSnapshot);
     const newImage = {
       id: Date.now() + Math.random(),
-      url: capturedSnapshot,
+      url: compressed || capturedSnapshot,
       name: photoNameInput.trim() || `Item #${stationImages.length + 1}`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    setStationImages(prev => [...prev, newImage]);
+    setStationImages(prev => [newImage, ...prev]);
     if (currentUser) {
       saveSpecimenToCloud(currentUser.uid, newImage, null);
     }
@@ -1545,6 +1708,10 @@ export default function App() {
     if (currentUser) {
       deleteSpecimenFromCloud(currentUser.uid, id);
     }
+    analysisCacheRef.current.delete(String(id));
+    try {
+      localStorage.removeItem(`tc_analysis_${id}`);
+    } catch (e) {}
     setStationImages(prev => {
       const filtered = prev.filter(img => img.id !== id);
       if (selectedSpecimen?.id === id) {
@@ -1553,6 +1720,8 @@ export default function App() {
         } else {
           setSelectedSpecimen(null);
           setAnalysisData(null);
+          setDonationData(null);
+          setExternalData(null);
         }
       }
       return filtered;
@@ -2189,10 +2358,19 @@ export default function App() {
                       }}
                     >
                       <div className="space-y-1.5">
-                        <div className="mb-1">
+                        <div className="mb-1 flex items-center justify-between gap-2">
                           <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-terracotta block truncate">
                             {analysisData.category || "Forensic Identification"}
                           </span>
+                          <button
+                            onClick={() => handleSelectSpecimen(selectedSpecimen, true)}
+                            title="Re-run Forensic Analysis on this specimen"
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-sage/20 text-sage-900 transition-colors text-[10px] font-mono cursor-pointer"
+                            style={{ color: '#4a6048' }}
+                          >
+                            <RefreshCw className="w-3 h-3 text-terracotta hover:rotate-180 transition-transform duration-500" />
+                            <span className="opacity-75">Re-analyze</span>
+                          </button>
                         </div>
 
                         <h3 
@@ -2443,7 +2621,7 @@ export default function App() {
                     </p>
                   </div>
                   <button
-                    onClick={() => handleSelectSpecimen(selectedSpecimen)}
+                    onClick={() => handleSelectSpecimen(selectedSpecimen, true)}
                     className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
                     style={{ backgroundColor: '#D97746' }}
                   >

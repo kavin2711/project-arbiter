@@ -75,17 +75,41 @@ export function subscribeToAuth(callback) {
 }
 
 /**
- * Downscale image if needed to ensure it fits safely inside Firestore document limits (< 1MB).
+ * Sanitize complex objects so Firestore will never reject undefined fields.
  */
-function createCompressedThumbnail(dataUrl, maxDimension = 360, quality = 0.75) {
+export function sanitizeForFirestore(val) {
+  if (val === undefined) return null;
+  if (val === null || typeof val !== 'object') return val;
+  if (Array.isArray(val)) {
+    return val.map(item => sanitizeForFirestore(item));
+  }
+  const clean = {};
+  for (const [k, v] of Object.entries(val)) {
+    if (v !== undefined) {
+      clean[k] = sanitizeForFirestore(v);
+    }
+  }
+  return clean;
+}
+
+/**
+ * Downscale image if needed to ensure it fits safely inside Firestore document limits (< 1MB).
+ * Converts blob: URLs and high-res data URLs into persistent, lightweight base64 JPEG thumbnails.
+ */
+export function createCompressedThumbnail(sourceUrl, maxDimension = 360, quality = 0.75) {
   return new Promise((resolve) => {
-    if (!dataUrl || typeof window === 'undefined' || !dataUrl.startsWith('data:image')) {
-      return resolve(dataUrl);
+    if (!sourceUrl || typeof window === 'undefined') {
+      return resolve(sourceUrl);
+    }
+    // Remote URLs (e.g. https://) don't need local canvas recompression
+    if (sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://')) {
+      return resolve(sourceUrl);
     }
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
-      let width = img.width;
-      let height = img.height;
+      let width = img.width || 360;
+      let height = img.height || 360;
       if (width > maxDimension || height > maxDimension) {
         if (width > height) {
           height = Math.round((height * maxDimension) / width);
@@ -100,10 +124,14 @@ function createCompressedThumbnail(dataUrl, maxDimension = 360, quality = 0.75) 
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      try {
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch (e) {
+        resolve(sourceUrl);
+      }
     };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
+    img.onerror = () => resolve(sourceUrl);
+    img.src = sourceUrl;
   });
 }
 
@@ -126,16 +154,40 @@ export async function saveSpecimenToCloud(userId, specimen, analysisData) {
       name: specimen.name || "Untitled Specimen",
       url: safeThumbnail,
       timestamp: specimen.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      analysisData: analysisData || null,
-      updatedAt: serverTimestamp(),
-      createdAt: serverTimestamp()
+      updatedAt: serverTimestamp()
     };
+
+    if (analysisData !== undefined && analysisData !== null) {
+      payload.analysisData = sanitizeForFirestore(analysisData);
+    }
+
+    if (!specimen.hasCloudDoc) {
+      payload.createdAt = serverTimestamp();
+    }
 
     await setDoc(specimenRef, payload, { merge: true });
     return docId;
   } catch (error) {
     console.error("[Firestore] Error saving specimen to cloud:", error);
     return null;
+  }
+}
+
+/**
+ * Update just the analysisData of an existing specimen in Firestore.
+ */
+export async function saveSpecimenAnalysisToCloud(userId, specimenId, analysisData) {
+  if (!userId || !specimenId || !analysisData) return;
+  try {
+    const docId = String(specimenId);
+    const specimenRef = doc(db, "users", userId, "specimens", docId);
+    const sanitized = sanitizeForFirestore(analysisData);
+    await setDoc(specimenRef, {
+      analysisData: sanitized,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    console.error("[Firestore] Error updating specimen analysis in cloud:", error);
   }
 }
 
@@ -159,7 +211,8 @@ export async function loadUserSpecimensFromCloud(userId) {
         name: data.name,
         url: data.url,
         timestamp: data.timestamp || "Synced",
-        analysisData: data.analysisData || null
+        analysisData: data.analysisData || null,
+        hasCloudDoc: true
       });
     });
 
