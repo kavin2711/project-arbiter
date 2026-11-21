@@ -1258,7 +1258,7 @@ export default function App() {
       id: 'hero',
       type: 'hero',
       title: 'TRUE CYCLE',
-      subtitle: 'an sincere effort to make an change',
+      subtitle: 'a sincere effort to make an change',
     },
     {
       id: '2020',
@@ -1949,7 +1949,7 @@ export default function App() {
                 className="text-lg sm:text-2xl md:text-3xl font-light tracking-wide italic max-w-2xl mx-auto"
                 style={{ color: '#556d53' }}
               >
-                an sincere effort to make an change
+                a sincere effort to make an change
               </p>
             </div>
 
