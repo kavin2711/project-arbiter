@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-ivory: #E5E8CE;
+  --color-sage: #789575;
+  --color-terracotta: #D97746;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  background-color: #E5E8CE !important;
+  color: #789575 !important;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden !important;
+}
+
+@keyframes liquidFlow {
+  0% {
+    stroke-dashoffset: 90;
+    opacity: 0.5;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+/* Hide scrollbar globally */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+}
+
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}

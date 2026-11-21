@@ -1,0 +1,36 @@
+﻿# Dependencies
+node_modules/
+package-lock.json.bak
+venv/
+.venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Python cache & compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environment files & secrets
+.env
+.env.*
+*.env
+!*.env.example
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Server logs
+*.log

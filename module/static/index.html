@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoLens | Forensic Material & Lifecycle Analyzer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            <circle cx="12" cy="12" r="4"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">EcoLens <span class="badge live-badge" id="activeProviderBadge">Groq LPU Vision (Active)</span></h1>
+          <p class="brand-tagline">Forensic Material Analysis & Circular Economy 3R Stars</p>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <!-- API Key Status / Configuration -->
+        <div class="api-key-pill" id="apiKeyPill">
+          <span class="status-indicator" id="statusDot"></span>
+          <span id="apiKeyStatusText">Checking API Key...</span>
+          <button id="toggleKeyModalBtn" class="btn-subtle" title="Configure Groq or Gemini API Key">Configure Key</button>
+        </div>
+        <button id="integrationModalBtn" class="btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+          Embed In Website
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="workspace-grid">
+      <!-- Left Column: Input Station (Camera & Upload) -->
+      <section class="card input-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="step-num">1</span>
+            <h2>Specimen Input Station</h2>
+          </div>
+          <span class="text-muted">Live Camera or Image Upload</span>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" id="tabCameraBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Live Camera
+          </button>
+          <button class="tab-btn" id="tabUploadBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            File Upload
+          </button>
+        </div>
+
+        <!-- Camera Viewport Container -->
+        <div id="cameraSection" class="input-panel">
+          <div class="camera-viewport-wrap">
+            <video id="webcamVideo" autoplay playsinline muted></video>
+            <canvas id="snapshotCanvas" style="display:none;"></canvas>
+            <div class="viewfinder-crosshair"></div>
+            <div id="cameraOverlayMsg" class="viewport-overlay" style="display:none;">
+              <span>Camera Inactive</span>
+            </div>
+            <div id="scanningLine" class="scan-laser" style="display:none;"></div>
+          </div>
+
+          <div class="camera-controls">
+            <button id="startCamBtn" class="btn-subtle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              Start Camera
+            </button>
+            <button id="flipCamBtn" class="btn-subtle" title="Flip Camera" style="display:none;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.21 1.79 4 4 4v4l5-5-5-5v4c-1.105 0-2-.895-2-2 0-3.314 2.686-6 6-6s6 2.686 6 6c0 1.657-.672 3.157-1.757 4.243l1.414 1.414C19.07 14.243 20 12.243 20 10z"/></svg>
+            </button>
+            <button id="captureBtn" class="btn-primary" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              Capture Specimen
+            </button>
+          </div>
+        </div>
+
+        <!-- File Upload Drag & Drop Container -->
+        <div id="uploadSection" class="input-panel" style="display:none;">
+          <div id="dropZone" class="drop-zone">
+            <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+            <div class="drop-zone-content">
+              <svg class="drop-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <p class="drop-primary">Drag & drop product image here</p>
+              <p class="drop-secondary">or <span class="highlight-link">browse from your computer</span></p>
+              <span class="file-limits">Supports JPG, PNG, WEBP (up to 15MB)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Specimen Preview Thumbnail & Action -->
+        <div id="specimenPreviewWrap" class="specimen-preview-wrap" style="display:none;">
+          <div class="preview-header">
+            <span class="preview-label">Active Specimen Image</span>
+            <button id="clearSpecimenBtn" class="btn-text-danger">Remove</button>
+          </div>
+          <div class="preview-img-box">
+            <img id="previewImg" alt="Specimen Preview" />
+            <div class="preview-badge" id="previewMeta">Ready for forensic scan</div>
+          </div>
+
+          <!-- Analyze Trigger Button -->
+          <button id="runAnalysisBtn" class="btn-action-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Analyze With Groq LPU Vision
+          </button>
+        </div>
+
+        <!-- Guardrails Banner -->
+        <div class="guardrail-info-box">
+          <div class="guardrail-icon">⚡</div>
+          <div>
+            <strong>High Quota Groq LPU Processing</strong>
+            <p>Prevents 429 quota exhaustion. Evaluates ASTM Resin Identification, non-object rejection, 1-5 star bound clamping, and safety thresholds.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Results Station -->
+      <section class="card results-card" id="resultsCard">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="step-num">2</span>
+            <h2>Forensic Lifecycle Intelligence</h2>
+          </div>
+          <span id="groundingStatusBadge" class="grounding-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+            Material Grounded
+          </span>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyResultsState" class="empty-state">
+          <div class="empty-icon-wrap">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><path d="m16.24 7.76-2.83 2.83"/></svg>
+          </div>
+          <h3>Awaiting Specimen Image</h3>
+          <p>Capture a product with your camera or upload a photo to generate unmocked, verified 3R ratings, material compositions, and donation/DIY determinations via Groq.</p>
+        </div>
+
+        <!-- Loading / Progress State -->
+        <div id="loadingState" class="loading-state" style="display:none;">
+          <div class="spinner"></div>
+          <h3 id="loadingStageTitle">Analyzing Specimen...</h3>
+          <p id="loadingStageSubtitle">Querying Groq LPU Vision Engine...</p>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <ul class="process-checklist">
+            <li id="stepObjDetect" class="step-active">📷 Verifying physical object presence & guardrails</li>
+            <li id="stepGrounding" class="step-pending">⚡ Groq LPU multimodal vision inference</li>
+            <li id="stepComposition" class="step-pending">🔬 Calculating forensic material compositions</li>
+            <li id="step3RStars" class="step-pending">⭐ Computing Recyclability, Reusability & Reducibility</li>
+            <li id="stepBooleans" class="step-pending">🏷️ Evaluating Donation-Worthy & DIY-Worthy status</li>
+          </ul>
+        </div>
+
+        <!-- Loaded Analysis Dashboard -->
+        <div id="resultsDashboard" class="results-dashboard" style="display:none;">
+          
+          <!-- Product Title Banner -->
+          <div class="product-banner">
+            <div>
+              <span class="category-tag" id="resCategory">Packaging</span>
+              <h2 class="product-heading" id="resProductName">Identified Product Name</h2>
+              <p class="product-summary" id="resSummary">Summary description of material lifecycle...</p>
+            </div>
+            <div class="guardrail-stamp" id="resGuardrailStamp">
+              <span class="stamp-icon">✓</span>
+              <span class="stamp-text">GUARDRAIL PASSED</span>
+            </div>
+          </div>
+
+          <!-- Section 1: The Three 5-Star Ratings (Centered on Composition) -->
+          <div class="section-divider">
+            <span>1. THREE 5-STAR LIFECYCLE RATINGS (CENTERED ON COMPOSITION)</span>
+          </div>
+
+          <div class="stars-grid">
+            <!-- 1. Recyclability -->
+            <div class="star-rating-card recyclability-card">
+              <div class="star-card-top">
+                <span class="rating-icon">♻️</span>
+                <span class="rating-type">Recyclability</span>
+              </div>
+              <div class="stars-display" id="resRecycleStars">★★★★★</div>
+              <div class="score-numerical"><span id="resRecycleScore">4.5</span> <small>/ 5.0</small></div>
+              <p class="rating-rationale" id="resRecycleReason">Municipal curbside facility sorting viability...</p>
+            </div>
+
+            <!-- 2. Reusability -->
+            <div class="star-rating-card reusability-card">
+              <div class="star-card-top">
+                <span class="rating-icon">🔄</span>
+                <span class="rating-type">Reusability</span>
+              </div>
+              <div class="stars-display" id="resReuseStars">★★★★★</div>
+              <div class="score-numerical"><span id="resReuseScore">3.0</span> <small>/ 5.0</small></div>
+              <p class="rating-rationale" id="resReuseReason">Structural durability, wear cycles, and washability...</p>
+            </div>
+
+            <!-- 3. Reducibility -->
+            <div class="star-rating-card reducibility-card">
+              <div class="star-card-top">
+                <span class="rating-icon">📉</span>
+                <span class="rating-type">Reducibility</span>
+              </div>
+              <div class="stars-display" id="resReduceStars">★★★★★</div>
+              <div class="score-numerical"><span id="resReduceScore">5.0</span> <small>/ 5.0</small></div>
+              <p class="rating-rationale" id="resReduceReason">Impact and ease of avoiding this item or packaging...</p>
+            </div>
+          </div>
+
+          <!-- Section 2: Two Dedicated Boolean Values -->
+          <div class="section-divider">
+            <span>2. DEDICATED ACTION DETERMINATIONS (2 BOOLEAN VALUES)</span>
+          </div>
+
+          <div class="booleans-grid">
+            <!-- Boolean 1: Donation Worthy -->
+            <div class="boolean-card" id="donationCard">
+              <div class="boolean-header">
+                <div class="boolean-title-wrap">
+                  <span class="boolean-icon">🎁</span>
+                  <div>
+                    <h3>Donation Worthy</h3>
+                    <span class="boolean-sub">Unspoiled Food, Clothes, Belts, Usable Goods</span>
+                  </div>
+                </div>
+                <span class="boolean-badge" id="donationBadge">TRUE</span>
+              </div>
+              <p class="boolean-explanation" id="donationRationale">Evaluation of hygiene, freshness, and shelter acceptance...</p>
+            </div>
+
+            <!-- Boolean 2: DIY Project Worthy -->
+            <div class="boolean-card" id="diyCard">
+              <div class="boolean-header">
+                <div class="boolean-title-wrap">
+                  <span class="boolean-icon">🛠️</span>
+                  <div>
+                    <h3>DIY Project Worthy</h3>
+                    <span class="boolean-sub">Safe & Practical Upcycling / Maker Potential</span>
+                  </div>
+                </div>
+                <span class="boolean-badge" id="diyBadge">TRUE</span>
+              </div>
+              <p class="boolean-explanation" id="diyRationale">Evaluation of material safety, stability, and craft value...</p>
+              <div class="diy-ideas-box" id="diyIdeasBox" style="display:none;">
+                <span class="diy-ideas-label">Suggested Upcycling Ideas:</span>
+                <ul id="diyIdeasList"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 3: Proper Macro Compositions Table -->
+          <div class="section-divider">
+            <span>3. FORENSIC MATERIAL COMPOSITIONS TABLE</span>
+          </div>
+
+          <div class="table-container">
+            <table class="compositions-table">
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Forensic Material</th>
+                  <th>Share (%)</th>
+                  <th>Recyclability</th>
+                  <th>Disposal / Collection Stream</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="compositionsTableBody">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Section 4: Verified Search Grounding Proof -->
+          <div class="section-divider">
+            <span>4. VERIFIED MATERIAL SEARCH GROUNDING</span>
+          </div>
+
+          <div class="grounding-box">
+            <div class="grounding-header">
+              <div class="grounding-logo">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <strong>Search Verification Queries</strong>
+              </div>
+              <span class="grounding-count" id="queriesCount">2 Queries</span>
+            </div>
+            
+            <div class="queries-list" id="queriesList">
+              <!-- Queries pill badges -->
+            </div>
+
+            <div class="sources-list-wrap">
+              <strong>Authoritative Reference Sources:</strong>
+              <div class="sources-links" id="sourcesLinks">
+                <!-- Clickable citations -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </main>
+
+    <!-- Configure Key Modal -->
+    <dialog id="keyModal" class="app-dialog">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>Configure AI Provider & API Key</h3>
+          <button id="closeKeyModalBtn" class="btn-icon">✕</button>
+        </div>
+        
+        <div class="form-group">
+          <label for="providerSelect">Select AI Provider</label>
+          <select id="providerSelect" class="provider-dropdown">
+            <option value="groq" selected>⚡ Groq LPU (Recommended: No 429 quota exhaustion, sub-second speed)</option>
+            <option value="gemini">Google Gemini (Gemini 3.8 Flash)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="apiKeyInput" id="apiKeyLabel">Groq API Key (starts with gsk_)</label>
+          <div class="input-with-action">
+            <input type="password" id="apiKeyInput" placeholder="gsk_..." />
+            <button id="toggleShowKeyBtn" class="btn-subtle" type="button">Show</button>
+          </div>
+          <span class="input-hint" id="apiKeyHint">
+            Get a free Groq API key instantly at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.
+          </span>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="saveKeyBtn" class="btn-primary">Save & Connect Key</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Integration Code Modal -->
+    <dialog id="integrationModal" class="app-dialog modal-wide">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>Integrate EcoLens Module In Your Website</h3>
+          <button id="closeIntegrationModalBtn" class="btn-icon">✕</button>
+        </div>
+        <p class="dialog-desc">Easily integrate this forensic lifecycle analyzer into TrueCycle, React, Next.js, or any web application via standard REST calls.</p>
+        
+        <div class="code-tab-bar">
+          <button class="code-tab active" data-tab="truecycle">TrueCycle Drop-In</button>
+          <button class="code-tab" data-tab="vanilla">Vanilla JS Fetch</button>
+          <button class="code-tab" data-tab="react">React Component</button>
+          <button class="code-tab" data-tab="curl">cURL Command</button>
+        </div>
+
+        <div class="code-box">
+          <pre><code id="integrationCodeBlock"></code></pre>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="copyCodeBtn" class="btn-secondary">Copy Snippet</button>
+        </div>
+      </div>
+    </dialog>
+
+    <footer class="app-footer">
+      <span>EcoLens Forensic Engine • Groq LPU Vision (Llama 3.2) & Gemini • Zero Mock Values</span>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
