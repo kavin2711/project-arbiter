@@ -19,15 +19,15 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 
-// True Cycle Firebase Configuration
+// True Cycle Firebase Configuration (Loaded securely from environment variables)
 const firebaseConfig = {
-  apiKey: "AIzaSyAocurggvjaLGTJOJ0fh7a_1DE1Pb_yG3A",
-  authDomain: "truecycle-c351a.firebaseapp.com",
-  projectId: "truecycle-c351a",
-  storageBucket: "truecycle-c351a.firebasestorage.app",
-  messagingSenderId: "774871608141",
-  appId: "1:774871608141:web:44558922681054a05fe504",
-  measurementId: "G-X8DQFLXRHT"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "truecycle-c351a.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "truecycle-c351a",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "truecycle-c351a.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "774871608141",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:774871608141:web:44558922681054a05fe504",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-X8DQFLXRHT"
 };
 
 // Initialize Firebase App
