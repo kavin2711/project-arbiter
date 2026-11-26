@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: truecycle
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ACTIVE_PROVIDER
+        value: groq

@@ -10,12 +10,20 @@
  */
 
 function getApiBaseUrl() {
+  if (import.meta.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
   if (typeof window !== 'undefined' && window.location) {
     // When running via Vite dev server (or reverse proxy), use relative /api
     if (window.location.port === '3000' || window.location.port === '5173') {
       return '/api';
     }
+    // When served via backend on port 8000
     if (window.location.port === '8000') {
+      return '/api';
+    }
+    // When running on any deployed production domain (Render, Railway, Fly, etc.), use relative /api
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       return '/api';
     }
   }

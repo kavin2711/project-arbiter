@@ -397,8 +397,24 @@ async def external_portal_endpoint(raw_request: Request):
         raise HTTPException(status_code=502, detail=f"External guide error: {str(e)}")
 
 
-# Serve static web interface
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+# Serve static web interface: Prioritize React production build (dist/) if present
+ROOT_DIR = os.path.dirname(MODULE_DIR)
+DIST_DIR = os.path.join(ROOT_DIR, "dist")
+
+if os.path.exists(DIST_DIR) and os.path.exists(os.path.join(DIST_DIR, "index.html")):
+    app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
+else:
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=404, content={"detail": f"API endpoint '{request.url.path}' not found"})
+    dist_index = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(dist_index):
+        return FileResponse(dist_index)
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
 if __name__ == "__main__":
