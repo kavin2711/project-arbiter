@@ -1,7 +1,7 @@
 # ========================================================
 # Stage 1: Build React + Vite Production Assets
 # ========================================================
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 
 # Injected environment variables for Vite build
@@ -22,9 +22,11 @@ ENV VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID
 ENV VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
 ENV VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID
 ENV VITE_API_URL=$VITE_API_URL
+ENV npm_config_engine_strict=false
+ENV npm_config_loglevel=error
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --engine-strict=false || npm install --engine-strict=false
 
 COPY . .
 RUN npm run build

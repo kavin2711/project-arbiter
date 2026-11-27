@@ -717,7 +717,7 @@ function ExternalPortalModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-['Orbitron'] font-bold text-base sm:text-lg tracking-wider" style={{ color: '#2b3b29' }}>
-                  Certified Recycling & Recovery Directive
+                  Recycle Options & Recovery Directive
                 </h3>
               </div>
               <p className="text-xs font-medium opacity-75 mt-0.5" style={{ color: '#4a6048' }}>
@@ -1415,6 +1415,61 @@ export default function App() {
 
   const handleSignOut = async () => {
     await logOut();
+  };
+
+  // On-Demand Handlers: Guarantee fresh data when opening modals
+  const handleOpenDonationModal = async () => {
+    setShowDonationModal(true);
+    if (!donationData && !isFetchingDonations && analysisData) {
+      setIsFetchingDonations(true);
+      try {
+        const data = await fetchDonationDestinations(
+          analysisData.productName || selectedSpecimen?.name,
+          analysisData.category || 'General Goods',
+          analysisData.donateReason || 'Donation candidate'
+        );
+        setDonationData(data);
+        if (selectedSpecimen?.id) {
+          const currentCached = getCachedAnalysis(selectedSpecimen.id) || analysisData;
+          const enriched = { ...currentCached, donationData: data };
+          setCachedAnalysis(selectedSpecimen.id, enriched);
+          setStationImages(prev => prev.map(img =>
+            String(img.id) === String(selectedSpecimen.id) ? { ...img, analysisData: enriched } : img
+          ));
+        }
+      } catch (err) {
+        console.error('Donation on-demand fetch error:', err);
+      } finally {
+        setIsFetchingDonations(false);
+      }
+    }
+  };
+
+  const handleOpenExternalModal = async () => {
+    setShowExternalModal(true);
+    if (!externalData && !isFetchingExternal && analysisData) {
+      setIsFetchingExternal(true);
+      try {
+        const data = await fetchExternalPortalGuide(
+          analysisData.productName || selectedSpecimen?.name,
+          analysisData.category || 'General Goods',
+          'Recycle Options'
+        );
+        setExternalData(data);
+        if (selectedSpecimen?.id) {
+          const currentCached = getCachedAnalysis(selectedSpecimen.id) || analysisData;
+          const enriched = { ...currentCached, externalData: data };
+          setCachedAnalysis(selectedSpecimen.id, enriched);
+          setStationImages(prev => prev.map(img =>
+            String(img.id) === String(selectedSpecimen.id) ? { ...img, analysisData: enriched } : img
+          ));
+        }
+      } catch (err) {
+        console.error('External guide on-demand fetch error:', err);
+      } finally {
+        setIsFetchingExternal(false);
+      }
+    }
   };
 
   // Secret Engine Configuration Handlers (API Failover Insurance)
@@ -2418,12 +2473,9 @@ export default function App() {
                       <img 
                         src={selectedSpecimen.url} 
                         alt={selectedSpecimen.name} 
-                        className="max-h-[175px] w-auto max-w-full object-contain rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-105"
+                        className="max-h-[175px] w-auto max-w-full object-contain rounded-xl shadow-sm transition-transform duration-300 ease-out group-hover:scale-115 cursor-zoom-in"
                       />
-                      <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm text-[9px] text-white font-mono flex items-center gap-1">
-                        <ZoomIn className="w-2.5 h-2.5 text-terracotta" />
-                        Natural Aspect
-                      </div>
+                      
                     </div>
 
                   </div>
@@ -2548,7 +2600,7 @@ export default function App() {
                     <div>
                       {analysisData.donate && (
                         <button
-                          onClick={() => setShowDonationModal(true)}
+                          onClick={handleOpenDonationModal}
                           className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer group"
                           style={{ 
                             backgroundColor: '#789575',
@@ -2568,14 +2620,14 @@ export default function App() {
                     <div>
                       {analysisData.external && (
                         <button
-                          onClick={() => setShowExternalModal(true)}
+                          onClick={handleOpenExternalModal}
                           className="flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer group"
                           style={{ 
                             backgroundColor: '#D97746',
                             boxShadow: '0 6px 18px -3px rgba(217, 119, 70, 0.45)' 
                           }}
                         >
-                          <span>{analysisData.externalTitle || "Recycle Portal"}</span>
+                          <span>Recycle Options</span>
                           <ExternalLink className="w-3.5 h-3.5 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                           {isFetchingExternal && !externalData && (
                             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
