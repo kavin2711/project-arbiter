@@ -19,15 +19,17 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 
-// True Cycle Firebase Configuration (Loaded securely from environment variables)
+// True Cycle Firebase Configuration (Loaded securely from build or runtime environment variables)
+const runtimeConfig = typeof window !== 'undefined' ? (window.__FIREBASE_CONFIG__ || {}) : {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "truecycle-c351a.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "truecycle-c351a",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "truecycle-c351a.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "774871608141",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:774871608141:web:44558922681054a05fe504",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-X8DQFLXRHT"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || runtimeConfig.apiKey || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || runtimeConfig.authDomain || "truecycle-c351a.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || runtimeConfig.projectId || "truecycle-c351a",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || runtimeConfig.storageBucket || "truecycle-c351a.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || runtimeConfig.messagingSenderId || "774871608141",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || runtimeConfig.appId || "1:774871608141:web:44558922681054a05fe504",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || runtimeConfig.measurementId || "G-X8DQFLXRHT"
 };
 
 // Initialize Firebase App

@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 if MODULE_DIR not in sys.path:
@@ -397,14 +397,48 @@ async def external_portal_endpoint(raw_request: Request):
         raise HTTPException(status_code=502, detail=f"External guide error: {str(e)}")
 
 
+@app.get("/api/firebase-config")
+def get_firebase_config():
+    """Returns runtime public Firebase configuration from environment variables."""
+    load_env_file()
+    api_key = os.environ.get("VITE_FIREBASE_API_KEY") or os.environ.get("FIREBASE_API_KEY", "")
+    return {
+        "apiKey": api_key,
+        "authDomain": os.environ.get("VITE_FIREBASE_AUTH_DOMAIN") or os.environ.get("FIREBASE_AUTH_DOMAIN", "truecycle-c351a.firebaseapp.com"),
+        "projectId": os.environ.get("VITE_FIREBASE_PROJECT_ID") or os.environ.get("FIREBASE_PROJECT_ID", "truecycle-c351a"),
+        "storageBucket": os.environ.get("VITE_FIREBASE_STORAGE_BUCKET") or os.environ.get("FIREBASE_STORAGE_BUCKET", "truecycle-c351a.firebasestorage.app"),
+        "messagingSenderId": os.environ.get("VITE_FIREBASE_MESSAGING_SENDER_ID") or os.environ.get("FIREBASE_MESSAGING_SENDER_ID", "774871608141"),
+        "appId": os.environ.get("VITE_FIREBASE_APP_ID") or os.environ.get("FIREBASE_APP_ID", "1:774871608141:web:44558922681054a05fe504"),
+        "measurementId": os.environ.get("VITE_FIREBASE_MEASUREMENT_ID") or os.environ.get("FIREBASE_MEASUREMENT_ID", "G-X8DQFLXRHT")
+    }
+
+
 # Serve static web interface: Prioritize React production build (dist/) if present
 ROOT_DIR = os.path.dirname(MODULE_DIR)
 DIST_DIR = os.path.join(ROOT_DIR, "dist")
+STATIC_DIR = os.path.join(MODULE_DIR, "static")
 
-if os.path.exists(DIST_DIR) and os.path.exists(os.path.join(DIST_DIR, "index.html")):
-    app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
+
+@app.get("/")
+async def serve_index():
+    dist_index = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(dist_index):
+        with open(dist_index, "r", encoding="utf-8") as f:
+            html = f.read()
+        fb_key = os.environ.get("VITE_FIREBASE_API_KEY") or os.environ.get("FIREBASE_API_KEY", "")
+        if fb_key:
+            cfg = {"apiKey": fb_key}
+            injection = f'<script>window.__FIREBASE_CONFIG__={json.dumps(cfg)};</script>'
+            html = html.replace("<head>", f"<head>{injection}", 1)
+        return HTMLResponse(content=html)
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+# Mount remaining static assets (JS, CSS, images, etc.)
+if os.path.exists(DIST_DIR):
+    app.mount("/", StaticFiles(directory=DIST_DIR), name="frontend")
 else:
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    app.mount("/", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.exception_handler(404)
@@ -413,7 +447,14 @@ async def custom_404_handler(request: Request, exc):
         return JSONResponse(status_code=404, content={"detail": f"API endpoint '{request.url.path}' not found"})
     dist_index = os.path.join(DIST_DIR, "index.html")
     if os.path.exists(dist_index):
-        return FileResponse(dist_index)
+        with open(dist_index, "r", encoding="utf-8") as f:
+            html = f.read()
+        fb_key = os.environ.get("VITE_FIREBASE_API_KEY") or os.environ.get("FIREBASE_API_KEY", "")
+        if fb_key:
+            cfg = {"apiKey": fb_key}
+            injection = f'<script>window.__FIREBASE_CONFIG__={json.dumps(cfg)};</script>'
+            html = html.replace("<head>", f"<head>{injection}", 1)
+        return HTMLResponse(content=html)
     return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
