@@ -50,10 +50,10 @@ export const db = getFirestore(app);
 export async function signInWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return { user: result.user, error: null };
+    return { user: result.user, error: null, code: null };
   } catch (error) {
-    console.error("[Firebase Auth] Google Sign-In error:", error);
-    return { user: null, error: error.message };
+    console.error("[Firebase Auth] Google Sign-In error:", error?.code, error?.message);
+    return { user: null, error: error?.message || "Sign-in failed", code: error?.code || "unknown" };
   }
 }
 

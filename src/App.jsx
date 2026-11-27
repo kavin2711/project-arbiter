@@ -1229,6 +1229,7 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const [cloudMessage, setCloudMessage] = useState('');
+  const [authNotice, setAuthNotice] = useState(null);
 
   // Secret Engine Configuration Modal States (API Failover Insurance)
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -1406,10 +1407,33 @@ export default function App() {
 
   const handleGoogleSignIn = async () => {
     setIsAuthLoading(true);
-    const { user, error } = await signInWithGoogle();
+    setAuthNotice(null);
+    const { user, error, code } = await signInWithGoogle();
     setIsAuthLoading(false);
     if (error) {
-      console.warn('Google Sign-In notice:', error);
+      console.warn('Google Sign-In notice:', code, error);
+      if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'your-hosted-domain';
+        setAuthNotice({
+          title: 'Domain Not Authorized in Firebase',
+          message: `Firebase blocked sign-in because "${host}" is not in your Authorized Domains list.`,
+          action: `Firebase Console -> Authentication -> Settings -> Authorized domains -> Add "${host}"`
+        });
+      } else if (code === 'auth/popup-blocked') {
+        setAuthNotice({
+          title: 'Popup Blocked',
+          message: 'Your browser blocked the Google Sign-In popup window. Please allow popups for this site in your browser bar.',
+          action: 'Address Bar -> Allow Popups for this site'
+        });
+      } else if (code === 'auth/cancelled-popup-request' || code === 'auth/popup-closed-by-user') {
+        // User voluntarily dismissed popup
+      } else {
+        setAuthNotice({
+          title: 'Authentication Notice',
+          message: error,
+          action: code ? `Code: ${code}` : undefined
+        });
+      }
     }
   };
 
@@ -1938,6 +1962,29 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* AUTHENTICATION NOTICE / DOMAIN AUTHORIZATION HELPER */}
+      {authNotice && (
+        <div className="fixed top-20 right-4 sm:right-8 z-50 max-w-sm w-[92vw] sm:w-auto p-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-3" style={{ borderColor: 'rgba(217, 119, 70, 0.5)' }}>
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-terracotta shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-bold text-xs uppercase tracking-wider text-[#2b3b29]">{authNotice.title}</p>
+                <button onClick={() => setAuthNotice(null)} className="text-stone-400 hover:text-stone-700 ml-2 cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed mb-2">{authNotice.message}</p>
+              {authNotice.action && (
+                <div className="text-[11px] font-mono bg-[#789575]/10 p-2 rounded-lg text-[#2b3b29] border border-[#789575]/20 select-all break-all">
+                  {authNotice.action}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* VIEW 1: STORYLINE SLIDES */}
       {currentPage === 'landing' ? (
